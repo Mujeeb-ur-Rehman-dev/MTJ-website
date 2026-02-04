@@ -1,0 +1,68 @@
+.hero_section{
+    height: 100vh;
+}
+
+/* Smooth fade and slide animation for image changes */
+.banner_img {
+  animation: fadeInSlide 0.8s ease-in-out;
+}
+.desktop-hero-img{
+  width:100% ;
+  height:100%;
+  padding-top:6.5vw;
+  z-index: -1
+}
+
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(1.01);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.hero-nav-container {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 var(--space-16);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.hero-nav-btn {
+  pointer-events: auto;
+  position: static;
+  transform: none;
+}
+
+@media (max-width: 768px) {
+  .hero-nav-container {
+    padding: 0 var(--space-12);
+    display: flex !important;
+  }
+  .hero-nav-btn {
+    display: flex !important;
+    width: 40px !important;
+    height: 40px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-nav-container {
+    padding: 0 var(--space-8);
+  }
+
+  .hero-nav-btn {
+    width: 36px !important;
+    height: 36px !important;
+  }
+}

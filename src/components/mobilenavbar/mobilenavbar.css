@@ -1,0 +1,58 @@
+.mbl{
+  width: 100vw;
+  text-align: center;
+  background-color: #1d1d1dd4;
+  position: fixed;
+  top: calc(48px + 72px);
+  z-index: 10;
+}
+
+
+.mbl li{
+    margin: 25px;
+}
+.mbl a {
+  position: relative;
+   font-size: 18px;
+  transition: color 0.3s ease;
+  padding-bottom: 3px;  
+}
+.mbl a::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0%;
+  height: 2px;
+   /* background: linear-gradient(
+    to right,
+    rgb(248, 181, 24),
+    rgb(48, 174, 227),
+    rgb(226, 32, 38),
+    rgb(83, 176, 72)
+  ); */
+  background-color: rgb(48, 174, 227);
+  transition: width 0.5s ease;
+  border-radius: 2px;
+}
+
+.mbl a:hover::after {
+  width: 100%;
+}
+
+.mbl a:hover {
+   color: white; 
+}
+.active {
+  color: rgb(48, 174, 227); /* same as your hover color */
+}
+
+.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+}
