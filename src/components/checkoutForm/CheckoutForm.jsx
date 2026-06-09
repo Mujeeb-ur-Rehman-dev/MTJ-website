@@ -1,41 +1,133 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useDonation } from '../../contexts/DonationContext'
 import axiosInstance from '../../utils/axios'
 import { ALL_PROJECTS_DATA } from '../../data/projectsData'
 import './CheckoutForm.css'
 import CountryDropdown from './CountryDropdown'
+import AppealCheckoutFields from './AppealCheckoutFields'
+import Loader from '../Loader/Loader'
+import { postGatewayForm } from '../../lib/paymentGatewayForm'
+import {
+  getStripeRecurringForPayload,
+  isMonthlyDonationFrequency,
+  STRIPE_DONATION_METHOD,
+} from '../../lib/stripeRecurring'
+import { CiCreditCard2 } from "react-icons/ci";
+import { fetchAppealsList } from '../../lib/appealsApi'
+import { buildAppealDonationLine, isAppealDonationLine } from '../../lib/appealsHelpers'
+
+const stripePublishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
+
+/**
+ * Inner form for Stripe Embedded payment: PaymentElement + confirmPayment.
+ * Must be rendered inside <Elements options={{ clientSecret }}>.
+ */
+function StripeEmbedPaymentForm({ clientSecret, returnUrl, onClose }) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [isConfirming, setIsConfirming] = useState(false)
+  const [error, setError] = useState(null)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!stripe || !elements || !clientSecret) return
+    setError(null)
+    // Required: call elements.submit() before confirmPayment (prior to any async work)
+    await elements.submit()
+    setIsConfirming(true)
+    const { error: confirmError } = await stripe.confirmPayment({
+      elements,
+      clientSecret,
+      confirmParams: {
+        return_url: returnUrl,
+        receipt_email: undefined,
+      },
+    })
+    setIsConfirming(false)
+    if (confirmError) {
+      setError(confirmError.message || 'Payment failed.')
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="stripe-embed-form">
+      <PaymentElement />
+      {error && <div className="stripe-embed-form__error">{error}</div>}
+      <div className="stripe-embed-form__actions">
+        <button type="button" className="stripe-embed-form__btn stripe-embed-form__btn--secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="stripe-embed-form__btn stripe-embed-form__btn--primary" disabled={!stripe || isConfirming}>
+          {isConfirming ? 'Processing…' : 'Pay now'}
+        </button>
+      </div>
+    </form>
+  )
+}
 
 const DEFAULT_FORM = {
   donor_name: '',
   donor_email: '',
   donor_phone: '',
   donation_type: 'general',
+  donation_frequency: 'once',
   country: '',
   city: '',
-  address: ''
+  address: '',
+  on_behalf_names: '',
+  notification_subscription: true
 }
 
-// Payment frequency mapping
+// Non-Stripe gateways are one-time only; monthly uses donation_method stripe + recurring object
 const paymentFrequency = {
   blinq: 'once',
-  payfast: 'once'
+  payfast: 'once',
+  meezan: 'once',
+  stripe: 'once',
+  stripe_embed: 'once',
+  alfalah: 'once',
 }
 
-const CheckoutForm = () => {
+const CheckoutForm = ({ testCheckout = false }) => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { donationData, projectDonations, amount, clearDonationData, setProjectDonationData, setDonationFormData, ref } = useDonation()
+  const { donationData, projectDonations, amount, clearDonationData, setProjectDonationData, setDonationFormData, ref, utmParams } = useDonation()
+  console.log("donationData", donationData);
+  console.log("projectDonations", projectDonations);
+
   const [formData, setFormData] = useState(DEFAULT_FORM)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(null)
   const [formMessage, setFormMessage] = useState({ type: '', text: '' })
   const [isLoadingFailedTransaction, setIsLoadingFailedTransaction] = useState(false)
+  const [isDonationPostLoading, setIsDonationPostLoading] = useState(false)
   const [donationIdFromQuery, setDonationIdFromQuery] = useState(null)
+  /** Set when `?donationId=` retry flow loads `/donations/public/failed-transaction/:id` — sent as `donor_id` on POST */
+  const [failedRetryDonorId, setFailedRetryDonorId] = useState(null)
+  const [stripeEmbedClientSecret, setStripeEmbedClientSecret] = useState(null)
   const hasFetchedFailedTransaction = useRef(false)
   const hasSetDonationItems = useRef(false)
   const previousDonationItemsRef = useRef(null)
   const previousDonationTypeRef = useRef(null)
+  const appealCheckoutInitialized = useRef(false)
+
+  const [appealsList, setAppealsList] = useState([])
+  const [appealsLoading, setAppealsLoading] = useState(false)
+  const [selectedAppealId, setSelectedAppealId] = useState('')
+  const [appealAmount, setAppealAmount] = useState('')
+  const appealIdFromQuery = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search)
+    return searchParams.get('appealId')
+  }, [location.search])
+
+  const appealSlugFromQuery = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search)
+    return searchParams.get('appealSlug')
+  }, [location.search])
 
   // Get donationID from query parameters
   useEffect(() => {
@@ -49,6 +141,7 @@ const CheckoutForm = () => {
       // Reset when donationId is removed from URL
       hasFetchedFailedTransaction.current = false
       setDonationIdFromQuery(null)
+      setFailedRetryDonorId(null)
     }
   }, [location.search, donationIdFromQuery])
 
@@ -58,26 +151,196 @@ const CheckoutForm = () => {
   
   // Determine which donation flow we're using
   const isProjectDonationsFlow = donationItemsFromState.length > 0 || projectDonations.length > 0
+  const projectDonationItemsForCheckout = useMemo(
+    () => (donationItemsFromState.length > 0 ? donationItemsFromState : projectDonations),
+    [donationItemsFromState, projectDonations]
+  )
+  const isQurbaniOnlyCheckout = useMemo(
+    () =>
+      isProjectDonationsFlow &&
+      projectDonationItemsForCheckout.length > 0 &&
+      projectDonationItemsForCheckout.every(
+        (d) => d.projectId === 'qurbani-baraye-mustehqeen' || d.projectId === 'qurbani'
+      ),
+    [isProjectDonationsFlow, projectDonationItemsForCheckout]
+  )
+  const isQurbaniCheckout = useMemo(
+    () =>
+      isQurbaniOnlyCheckout ||
+      donationData?.projectId === 'qurbani-baraye-mustehqeen' ||
+      donationData?.projectId === 'qurbani',
+    [isQurbaniOnlyCheckout, donationData?.projectId]
+  )
   const isOldDonationFormFlow = !!donationData
   const isFailedTransactionFlow = !!donationIdFromQuery
 
-  // Initialize form with donation data if available (skip if failed transaction flow)
+  const hasNonAppealProjectCart = useMemo(
+    () =>
+      projectDonationItemsForCheckout.some(
+        (d) => d.projectId && d.projectId !== 'appeal' && !isAppealDonationLine(d)
+      ),
+    [projectDonationItemsForCheckout]
+  )
+
+  const hasAppealQuery = Boolean(appealIdFromQuery || appealSlugFromQuery)
+
+  const isAppealCheckoutFlow = useMemo(
+    () => {
+      if (isFailedTransactionFlow || donationItemsFromState.length > 0) return false
+      if (hasAppealQuery) return true
+      return (
+        !hasNonAppealProjectCart &&
+        projectDonationItemsForCheckout.some(isAppealDonationLine)
+      )
+    },
+    [
+      isFailedTransactionFlow,
+      donationItemsFromState.length,
+      hasAppealQuery,
+      hasNonAppealProjectCart,
+      projectDonationItemsForCheckout,
+    ]
+  )
+
+  // Appeal donate URL: clear other cart lines and pre-select appeal id before API list loads
   useEffect(() => {
-    if (donationData && !isFailedTransactionFlow) {
-      // Set donation_type from donationData category if available
+    if (!hasAppealQuery) return
+    setDonationFormData(null)
+    setProjectDonationData([])
+    appealCheckoutInitialized.current = false
+    if (appealIdFromQuery) {
+      setSelectedAppealId(String(appealIdFromQuery))
+    }
+  }, [hasAppealQuery, appealIdFromQuery, setDonationFormData, setProjectDonationData])
+
+  // Load appeals for checkout selector
+  useEffect(() => {
+    if (!isAppealCheckoutFlow) return undefined
+    let cancelled = false
+    setAppealsLoading(true)
+    fetchAppealsList()
+      .then((list) => {
+        if (!cancelled) setAppealsList(Array.isArray(list) ? list : [])
+      })
+      .catch(() => {
+        if (!cancelled) setAppealsList([])
+      })
+      .finally(() => {
+        if (!cancelled) setAppealsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAppealCheckoutFlow])
+
+  // Match URL slug/id to loaded appeals list (when API returns)
+  useEffect(() => {
+    if (!isAppealCheckoutFlow || appealsList.length === 0) return
+    if (appealCheckoutInitialized.current) return
+
+    const fromCart = projectDonationItemsForCheckout.find(isAppealDonationLine)
+    let appeal = null
+    if (fromCart?.appealId) {
+      appeal = appealsList.find((a) => String(a.id) === String(fromCart.appealId))
+    } else if (appealIdFromQuery) {
+      appeal = appealsList.find((a) => String(a.id) === String(appealIdFromQuery))
+    } else if (appealSlugFromQuery) {
+      appeal = appealsList.find((a) => a.slug === appealSlugFromQuery)
+    }
+
+    if (appeal) {
+      setSelectedAppealId(String(appeal.id))
+      const cartAmount = fromCart?.totalAmount
+      if (cartAmount > 0) setAppealAmount(String(cartAmount))
+    } else if (appealIdFromQuery) {
+      setSelectedAppealId(String(appealIdFromQuery))
+    }
+
+    appealCheckoutInitialized.current = true
+  }, [
+    isAppealCheckoutFlow,
+    appealsList,
+    appealIdFromQuery,
+    appealSlugFromQuery,
+    projectDonationItemsForCheckout,
+  ])
+
+  // Sync appeal + amount into projectDonations for existing checkout amount/totals
+  useEffect(() => {
+    if (!isAppealCheckoutFlow || !setProjectDonationData) return
+
+    if (!selectedAppealId) {
+      setProjectDonationData([])
+      return
+    }
+
+    const appeal = appealsList.find((a) => String(a.id) === String(selectedAppealId))
+    if (!appeal) return
+
+    const total = Math.round(Number(appealAmount) || 0)
+    if (total <= 0) {
+      setProjectDonationData([])
+      return
+    }
+
+    setProjectDonationData([buildAppealDonationLine(appeal, total)])
+  }, [
+    isAppealCheckoutFlow,
+    selectedAppealId,
+    appealAmount,
+    appealsList,
+    setProjectDonationData,
+  ])
+
+  const selectedAppealForCheckout = useMemo(() => {
+    if (!isAppealCheckoutFlow) return null
+    const fromList = appealsList.find((a) => String(a.id) === String(selectedAppealId))
+    if (fromList) return fromList
+    const fromCart = projectDonationItemsForCheckout.find(isAppealDonationLine)
+    if (fromCart) {
+      return {
+        id: fromCart.appealId,
+        title: fromCart.projectTitle || 'Appeal',
+        currency: fromCart.currency || 'PKR',
+      }
+    }
+    if (selectedAppealId) {
+      return { id: selectedAppealId, title: 'Appeal', currency: 'PKR' }
+    }
+    return null
+  }, [
+    isAppealCheckoutFlow,
+    appealsList,
+    selectedAppealId,
+    projectDonationItemsForCheckout,
+  ])
+
+  // Initialize form with donation data if available (skip if failed transaction flow or appeal checkout)
+  useEffect(() => {
+    if (donationData && !isFailedTransactionFlow && !isAppealCheckoutFlow) {
       if (donationData.category) {
-        const categoryMap = {
-          'General': 'general',
-          'Zakat': 'zakat',
-          'Sadqa': 'sadqa'
+        const labelToDonationType = {
+          General: 'general',
+          Zakat: 'zakat',
+          Sadqa: 'sadqa',
+          Qurbani: 'qurbani-baraye-mustehqeen',
+          // DonationForm / context may store the API value as category (e.g. qurbani flow)
+          'qurbani-baraye-mustehqeen': 'qurbani-baraye-mustehqeen',
+          qurbani: 'qurbani-baraye-mustehqeen'
         }
-        setFormData(prev => ({
+        const raw = donationData.category
+        const donationType =
+          labelToDonationType[raw] ||
+          (['general', 'zakat', 'sadqa', 'fitrana_2026', 'qurbani-baraye-mustehqeen'].includes(raw)
+            ? raw
+            : 'general')
+        setFormData((prev) => ({
           ...prev,
-          donation_type: categoryMap[donationData.category] || 'general'
+          donation_type: donationType
         }))
       }
     }
-  }, [donationData, isFailedTransactionFlow])
+  }, [donationData, isFailedTransactionFlow, isAppealCheckoutFlow])
 
   // Store donation items from location state into context if available
   // Use ref to track if we've already set the data to prevent infinite loops
@@ -101,24 +364,36 @@ const CheckoutForm = () => {
   // Initialize donation type from project donations if available
   // Memoize the donation type to prevent unnecessary recalculations
   const firstDonationType = useMemo(() => {
-    const donationTypeSource = donationItemsFromState.length > 0 ? donationItemsFromState : projectDonations
-    return donationTypeSource.length > 0 ? donationTypeSource[0]?.donationType : null
-  }, [donationItemsFromState, projectDonations])
+    return projectDonationItemsForCheckout.length > 0
+      ? projectDonationItemsForCheckout[0]?.donationType
+      : null
+  }, [projectDonationItemsForCheckout])
   
   useEffect(() => {
+    if (isQurbaniOnlyCheckout) {
+      setFormData((prev) => {
+        if (prev.donation_type === 'qurbani-baraye-mustehqeen') return prev
+        return { ...prev, donation_type: 'qurbani-baraye-mustehqeen' }
+      })
+      previousDonationTypeRef.current = 'qurbani-baraye-mustehqeen'
+      return
+    }
+
     if (isProjectDonationsFlow && firstDonationType) {
+      const normalizedType = String(firstDonationType).trim().toLowerCase()
       const typeMap = {
-        'GENERAL': 'general',
-        'SADKA': 'sadqa',
-        'ZAKAT': 'zakat'
+        general: 'general',
+        sadqa: 'sadqa',
+        sadka: 'sadqa',
+        zakat: 'zakat',
+        fitrana: 'fitrana_2026',
+        fitrana_2026: 'fitrana_2026',
+        'qurbani-baraye-mustehqeen': 'qurbani-baraye-mustehqeen'
       }
-    const newDonationType = typeMap[firstDonationType] || 'general'
-      
-      // Only update if the donation type has actually changed
-      // Use a ref to track the last donation type we set to prevent infinite loops
+      const newDonationType = typeMap[normalizedType] || 'general'
+
       if (previousDonationTypeRef.current !== newDonationType) {
-        setFormData(prev => {
-          // Double-check: if current value already matches, don't update
+        setFormData((prev) => {
           if (prev.donation_type === newDonationType) {
             return prev
           }
@@ -130,10 +405,9 @@ const CheckoutForm = () => {
         previousDonationTypeRef.current = newDonationType
       }
     } else if (!isProjectDonationsFlow) {
-      // Reset ref when not in project donations flow
       previousDonationTypeRef.current = null
     }
-  }, [isProjectDonationsFlow, firstDonationType])
+  }, [isProjectDonationsFlow, firstDonationType, isQurbaniOnlyCheckout])
 
   // Handle failed transaction flow - fetch and populate form data
   useEffect(() => {
@@ -147,34 +421,56 @@ const CheckoutForm = () => {
         
         // First, reset donation data as requested
         clearDonationData()
+        setFailedRetryDonorId(null)
 
         // Fetch failed transaction data
         const response = await axiosInstance.get(`/donations/public/failed-transaction/${donationIdFromQuery}`)
-        console.log("failed transaction response", response)
-        
+
         if (response.data && response.data.success) {
-          const failedTransaction = response.data.data
-          const donor = failedTransaction.donor || {}
-          
-          console.log("Failed transaction data:", failedTransaction)
-          console.log("Donor data:", donor)
-          
+          const failedTransaction = response.data?.data
+          if (!failedTransaction || typeof failedTransaction !== 'object') {
+            setFormMessage({
+              type: 'error',
+              text: 'Failed to load donation information (empty response). Please try again.'
+            })
+            hasFetchedFailedTransaction.current = false
+            return
+          }
+
+          const donor = failedTransaction.donor && typeof failedTransaction.donor === 'object'
+            ? failedTransaction.donor
+            : {}
+
+          const donorIdRaw =
+            failedTransaction.donor_id ?? donor?.id ?? null
+          const donorIdNum = donorIdRaw != null ? Number(donorIdRaw) : NaN
+          setFailedRetryDonorId(Number.isFinite(donorIdNum) ? donorIdNum : null)
+
+          const dt = String(failedTransaction.donation_type || '').toLowerCase()
+          let categoryLabel = 'General'
+          if (dt === 'zakat') categoryLabel = 'Zakat'
+          else if (dt === 'sadqa' || dt === 'sadka') categoryLabel = 'Sadqa'
+          else if (dt === 'qurbani-baraye-mustehqeen' || dt === 'qurbani') categoryLabel = 'Qurbani'
+
           // Extract donation amount from transaction
           const donationAmount = failedTransaction.amount || 0
-          console.log("Donation amount:", donationAmount)
-          
+
           // FIRST: Set donation amount in context to make form visible
           if (donationAmount > 0) {
+            const retryTemplateCode =
+              failedTransaction.template_code ?? failedTransaction.templateCode ?? null
             const donationFormDataToSet = {
               amount: donationAmount.toString(),
               finalAmount: donationAmount.toString(),
               currency: failedTransaction.currency || 'PKR',
-              category: failedTransaction.donation_type === 'zakat' ? 'Zakat' : 
-                       failedTransaction.donation_type === 'sadqa' ? 'Sadqa' : 'General',
+              category: categoryLabel,
               projectId: failedTransaction.project_id || '',
-              donation_type: failedTransaction.donation_type || 'general'
+              donation_type: failedTransaction.donation_type || 'general',
+              ...(retryTemplateCode != null &&
+                String(retryTemplateCode).trim() !== '' && {
+                  templateCode: String(retryTemplateCode).trim()
+                })
             }
-            console.log("Setting donation form data:", donationFormDataToSet)
             setDonationFormData(donationFormDataToSet)
             
             // THEN: Pre-populate form with donor and transaction data after a small delay
@@ -189,7 +485,6 @@ const CheckoutForm = () => {
                 city: failedTransaction.city || donor.city || '',
                 address: donor.address || ''
               }
-              console.log("Setting form data:", formDataToSet)
               setFormData(prev => ({
                 ...prev,
                 ...formDataToSet
@@ -206,7 +501,6 @@ const CheckoutForm = () => {
               city: failedTransaction.city || donor.city || '',
               address: donor.address || ''
             }
-            console.log("Setting form data (no amount):", formDataToSet)
             setFormData(prev => ({
               ...prev,
               ...formDataToSet
@@ -218,13 +512,15 @@ const CheckoutForm = () => {
             text: 'Your previous donation attempt was not completed. Please complete the payment below.' 
           })
         } else {
-          setFormMessage({ 
-            type: 'error', 
-            text: 'Failed to load donation information. Please try again.' 
+          setFailedRetryDonorId(null)
+          setFormMessage({
+            type: 'error',
+            text: 'Failed to load donation information. Please try again.'
           })
         }
       } catch (error) {
         console.error('Error fetching failed transaction:', error)
+        setFailedRetryDonorId(null)
         setFormMessage({ 
           type: 'error', 
           text: error?.response?.data?.message || 'Failed to load donation information. Please try again.' 
@@ -255,12 +551,11 @@ const CheckoutForm = () => {
   // PayFast handler function
   const postToPayfast = (payfastResponse, formData) => {
     try {
-      console.log("PayFast response: **********************", payfastResponse);
       // Validate required fields from response
       if (!payfastResponse) {
         console.error('PayFast response is missing')
         setFormMessage({ type: 'error', text: 'Invalid payment response. Please try again.' })
-        setIsLoading(false)
+        setIsLoading(null)
         return
       }
 
@@ -270,7 +565,7 @@ const CheckoutForm = () => {
       if (!MERCHANT_ID || !ACCESS_TOKEN || !BASKET_ID || !TXNAMT) {
         console.error('Missing required PayFast fields:', { MERCHANT_ID, ACCESS_TOKEN, BASKET_ID, TXNAMT })
         setFormMessage({ type: 'error', text: 'Missing payment information. Please try again.' })
-        setIsLoading(false)
+        setIsLoading(null)
         return
       }
 
@@ -301,7 +596,6 @@ const CheckoutForm = () => {
         TRAN_TYPE: "ECOMM_PURCHASE",
       }
 
-      // console.log("PayFast fields:", fields)
       
       // Build and submit a real HTML form (POST navigation)
       const form = document.createElement('form')
@@ -329,12 +623,12 @@ const CheckoutForm = () => {
           form.parentNode.removeChild(form)
         }
       }, 1000)
-      
-      setIsLoading(false)
+
+      setIsLoading(null)
     } catch (error) {
       console.error('Error in postToPayfast:', error)
       setFormMessage({ type: 'error', text: 'Failed to initialize payment. Please try again.' })
-      setIsLoading(false)
+      setIsLoading(null)
     }
   }
 
@@ -343,6 +637,11 @@ const CheckoutForm = () => {
 
     // Use the passed payment method or the current selected payment
     const currentPayment = paymentMethod
+
+    if (!currentPayment) {
+      setFormMessage({ type: 'error', text: 'Please select a payment method.' })
+      return
+    }
 
     // Validate required fields and focus on first invalid field
     if (!formData.donor_name.trim()) {
@@ -433,11 +732,42 @@ const CheckoutForm = () => {
     if (totalAmount === 0 && totalAmountFromState > 0) {
       totalAmount = totalAmountFromState
     }
+    if (totalAmount === 0 && testCheckout) {
+      totalAmount = 222
+    }
+    totalAmount = Math.round(Number(totalAmount))
 
     if (!totalAmount || Number(totalAmount) <= 0 || Number(totalAmount) < 100) {
-      setFormMessage({ 
-        type: 'error', 
-        text: 'Please add donation items to the cart or enter a valid donation amount (minimum donation amount is 100 PKR)' 
+      setFormMessage({
+        type: 'error',
+        text: isAppealCheckoutFlow
+          ? 'Please enter a valid donation amount (minimum 100 PKR)'
+          : 'Please add donation items to the cart or enter a valid donation amount (minimum donation amount is 100 PKR)',
+      })
+      return
+    }
+
+    if (isAppealCheckoutFlow && !selectedAppealId) {
+      setFormMessage({ type: 'error', text: 'Appeal information is missing. Please open checkout from the appeal page again.' })
+      return
+    }
+
+    if (
+      isMonthlyDonationFrequency(formData.donation_frequency) &&
+      currentPayment !== STRIPE_DONATION_METHOD &&
+      currentPayment !== 'stripe'
+    ) {
+      setFormMessage({
+        type: 'error',
+        text: 'Monthly donations are only available with Stripe. Choose Give Once or pay with Stripe.',
+      })
+      return
+    }
+
+    if (currentPayment === STRIPE_DONATION_METHOD && !stripePromise) {
+      setFormMessage({
+        type: 'error',
+        text: 'Stripe is not configured. Please contact support or use another payment method.',
       })
       return
     }
@@ -446,7 +776,7 @@ const CheckoutForm = () => {
     setFormMessage({ type: '', text: '' })
 
     try {
-      setIsLoading(true)
+      setIsLoading(currentPayment)
 
       // Get project info - support both flows
       let project_id = ''
@@ -469,12 +799,29 @@ const CheckoutForm = () => {
         }
       }
 
+      const { on_behalf_names, ...formFieldsForPayload } = formData
+      const appealLine = projectDonationItemsForCheckout.find(isAppealDonationLine)
+      const appealIdForPayload =
+        appealLine?.appealId ??
+        (selectedAppealId && Number.isFinite(Number(selectedAppealId))
+          ? Number(selectedAppealId)
+          : null)
+
       const payload = {
-        project_id,
-        project_name,
-        ...formData,
+        project_id: isAppealCheckoutFlow ? 'appeal' : project_id,
+        project_name: isAppealCheckoutFlow
+          ? appealLine?.projectTitle || appealsList.find((a) => String(a.id) === String(selectedAppealId))?.title || ''
+          : project_name,
+        ...formFieldsForPayload,
+        ...(isQurbaniCheckout && {
+          on_behalf_names: typeof on_behalf_names === 'string' ? on_behalf_names.trim() : ''
+        }),
         donation_method: currentPayment,
-        donation_frequency: paymentFrequency[currentPayment] || 'once',
+        // Card gateways are one-time only; never send monthly with alfalah/payfast/etc.
+        donation_frequency:
+          currentPayment === 'alfalah'
+            ? 'once'
+            : formData.donation_frequency || paymentFrequency[currentPayment] || 'once',
         donation_source: 'website',
         amount: totalAmount,
         currency: (isOldDonationFormFlow || isFailedTransactionFlow) ? (donationData?.currency || 'PKR') : 'PKR',
@@ -483,57 +830,149 @@ const CheckoutForm = () => {
         ...(isProjectDonationsFlow && {
           donation_items: donationItemsFromState.length > 0 ? donationItemsFromState : projectDonations
         }),
+        ...(appealIdForPayload && {
+          appeal_id: Number(appealIdForPayload),
+        }),
+        // Old single-form flow: initiative template (e.g. Qurbani cow_share) from context
+        ...(isOldDonationFormFlow &&
+          donationData?.templateCode != null &&
+          String(donationData.templateCode).trim() !== '' && {
+            template_code: String(donationData.templateCode).trim()
+          }),
         // Include donationID if this is a retry of failed transaction
         ...(isFailedTransactionFlow && donationIdFromQuery && {
           previous_donation_id: donationIdFromQuery
         }),
+        ...(isFailedTransactionFlow &&
+          failedRetryDonorId != null &&
+          Number.isFinite(Number(failedRetryDonorId)) && {
+            donor_id: Number(failedRetryDonorId)
+          }),
         // Include ref if available (agency performance tracking)
         ...(ref && {
           ref: ref
-        })
+        }),
+        // UTM campaign tracking (captured from landing URL)
+        ...(utmParams && {
+          ...(() => {
+            const { utm_source, utm_medium, utm_campaign } = utmParams || {}
+            // Case-insensitive so ?utm_campaign=Qurbani2026 matches (same as qurbani2026)
+            const utmCampaignNorm = utm_campaign != null ? String(utm_campaign).trim().toLowerCase() : ''
+            const hasUtmCampaign = utmCampaignNorm !== ''
+            const resolvedCampaignId = hasUtmCampaign
+              ? (utmCampaignNorm === 'qurbani2026' ? 3 : null)
+              : undefined
+            return {
+              ...(utm_source ? { utm_source } : {}),
+              ...(utm_medium ? { utm_medium } : {}),
+              ...(hasUtmCampaign ? { campaign_id: resolvedCampaignId } : {})
+            }
+          })()
+        }),
+        // Stripe / stripe_embed: lowercase currency + recurring object when monthly
+        ...((currentPayment === 'stripe' || currentPayment === STRIPE_DONATION_METHOD) && {
+          currency: String(
+            (isOldDonationFormFlow || isFailedTransactionFlow)
+              ? donationData?.currency || 'PKR'
+              : 'PKR',
+          ).toLowerCase(),
+          ...(getStripeRecurringForPayload(formData.donation_frequency) && {
+            recurring: getStripeRecurringForPayload(formData.donation_frequency),
+          }),
+        }),
+        notification_subscription: formData.notification_subscription !== false,
+        ...(currentPayment === 'alfalah' && {
+          alfalah_transaction_type: '3',
+        }),
       }
-
-      // Use PUT to update existing donation if it's a failed transaction retry, otherwise POST
+      
+      console.log('payload', payload)
+      // return;
+              // Optional debug: set REACT_APP_DEBUG_CHECKOUT_PAYLOAD="true" to only log payload
+      if (process.env.REACT_APP_DEBUG_CHECKOUT_PAYLOAD === 'true') {
+        console.log('payload', payload)
+        setIsLoading(null)
+        return
+      }
+      
       let response
-      if (isFailedTransactionFlow && donationIdFromQuery) {
-        response = await axiosInstance.put(`/donations/${donationIdFromQuery}`, payload)
-      } else {
+      try {
+        setIsDonationPostLoading(true)
         response = await axiosInstance.post('/donations', payload)
+      } finally {
+        setIsDonationPostLoading(false)
       }
+      
 
       if (currentPayment === 'payfast') {
-        // Debug: Log the response to see its structure
-        console.log('PayFast response:', response.data)
-        console.log('PayFast response.data:', response.data?.data)
-        // Call postToPayfast with the response data from the server
-        // Try different possible response structures
         const payfastData = response.data?.data || response.data
         postToPayfast(payfastData, formData)
+      } else if (currentPayment === 'alfalah') {
+        const alfalahData = response.data?.data || response.data
+
+        if (alfalahData?.formAction && alfalahData?.formFields) {
+          try {
+            // cardStep 1 → HS/HS/HS; cardStep 2 → SSO/SSO/SSO (hosted card page)
+            postGatewayForm(alfalahData.formAction, alfalahData.formFields)
+          } catch (formErr) {
+            console.error(formErr)
+            setFormMessage({
+              type: 'error',
+              text: 'Failed to open Bank Alfalah checkout. Please try again.',
+            })
+          }
+        } else {
+          setFormMessage({
+            type: 'error',
+            text:
+              alfalahData?.message ||
+              response.data?.message ||
+              'Unexpected Bank Alfalah response. Please try again.',
+          })
+        }
+        setIsLoading(null)
+      } else if (currentPayment === STRIPE_DONATION_METHOD || currentPayment === 'stripe_embed') {
+        const data = response.data?.data || response.data
+        const clientSecret = data?.clientSecret
+        if (clientSecret) {
+          setIsLoading(null)
+          setStripeEmbedClientSecret(clientSecret)
+        } else {
+          setIsLoading(null)
+          setFormMessage({ type: 'error', text: 'Failed to start Stripe payment. Please try again.' })
+        }
+      } else if (currentPayment === 'stripe') {
+        if (response?.data?.success && response?.data?.data?.paymentUrl) {
+          setIsLoading(null)
+          window.location.href = response.data.data.paymentUrl
+        } else {
+          setIsLoading(null)
+          setFormMessage({ type: 'error', text: 'Failed to open Stripe checkout. Please try again.' })
+        }
       } else {
         if (response?.data?.success && response?.data?.data?.paymentUrl) {
           try {
-            setIsLoading(false)
-            // Try to open in new window
+            setIsLoading(null)
             const paymentWindow = window.open('', '_self')
             if (paymentWindow) {
               paymentWindow.location.href = response.data.data.paymentUrl
               paymentWindow.focus()
             } else {
-              setIsLoading(false)
+              setIsLoading(null)
               window.location.href = response.data.data.paymentUrl
             }
           } catch (error) {
             console.error('Error opening payment URL:', error)
-            setIsLoading(false)
+            setIsLoading(null)
             window.location.href = response.data.data.paymentUrl
           }
         } else {
-          setIsLoading(false)
+          setIsLoading(null)
           setFormMessage({ type: 'error', text: 'Failed to open invoice url' })
         }
       }
     } catch (error) {
-      setIsLoading(false)
+      setIsLoading(null)
       setFormMessage({ 
         type: 'error', 
         text: error?.response?.data?.message || error?.message || 'An error occurred. Please try again.' 
@@ -543,16 +982,9 @@ const CheckoutForm = () => {
     }
   }
 
-  // REMOVED: Render check - always show checkout form
-  // Show loading state while fetching failed transaction
+  // Failed-transaction fetch: full-screen loader only (donation context cleared until data loads)
   if (isLoadingFailedTransaction) {
-    return (
-      <section className="checkout-panel">
-        <div className="checkout-panel__message checkout-panel__message--info">
-          Loading your donation information...
-        </div>
-      </section>
-    )
+    return <Loader loading />
   }
 
   // Always render the form - no conditions
@@ -560,16 +992,55 @@ const CheckoutForm = () => {
   //   return null
   // }
 
+  const stripeEmbedReturnUrl = `${window.location.origin}/thanks`
+
+  const showCheckoutApiLoader = isDonationPostLoading
+
   return (
-    <section className="checkout-panel">
+    <>
+      <Loader loading={showCheckoutApiLoader} />
+      <section className="checkout-panel">
+      {stripeEmbedClientSecret && stripePromise && (
+        <div className="stripe-embed-overlay" role="dialog" aria-modal="true" aria-labelledby="stripe-embed-title">
+          <div className="stripe-embed-modal">
+            <div className="stripe-embed-modal__header">
+              <h2 id="stripe-embed-title" className="stripe-embed-modal__title">
+                {isMonthlyDonationFrequency(formData.donation_frequency)
+                  ? 'Complete monthly donation'
+                  : 'Complete payment'}
+              </h2>
+              <button type="button" className="stripe-embed-modal__close" onClick={() => setStripeEmbedClientSecret(null)} aria-label="Close">×</button>
+            </div>
+            <Elements stripe={stripePromise} options={{ clientSecret: stripeEmbedClientSecret }}>
+              <StripeEmbedPaymentForm
+                clientSecret={stripeEmbedClientSecret}
+                returnUrl={stripeEmbedReturnUrl}
+                onClose={() => setStripeEmbedClientSecret(null)}
+              />
+            </Elements>
+          </div>
+        </div>
+      )}
       <form className="checkout-panel__form">
         {formMessage.text && (
           <div className={`checkout-panel__message checkout-panel__message--${formMessage.type}`}>
             {formMessage.text}
           </div>
         )}
-        
+
         <div className="row">
+          {isAppealCheckoutFlow && (
+            <AppealCheckoutFields
+              appealTitle={selectedAppealForCheckout?.title || ''}
+              loading={appealsLoading}
+              amount={appealAmount}
+              currency={selectedAppealForCheckout?.currency || 'PKR'}
+              onAmountChange={(val) => {
+                if (val === '' || Number(val) >= 0) setAppealAmount(val)
+              }}
+            />
+          )}
+
           <div className="col-md-6">
             <div className="input-item input-item-name ltn__custom-icon checkout-panel__field">
               <input
@@ -620,9 +1091,17 @@ const CheckoutForm = () => {
                 onChange={handleInputChange}
                 className="checkout-panel__input checkout-panel__select"
               >
-                <option value="general">General Donation</option>
-                <option value="zakat">Zakat Donation</option>
-                <option value="sadqa">Sadqa Donation</option>
+                {isQurbaniOnlyCheckout ? (
+                  <option value="qurbani-baraye-mustehqeen">Qurbani </option>
+                ) : (
+                  <>
+                    <option value="general">General Donation</option>
+                    <option value="zakat">Zakat </option>
+                    <option value="sadqa">Sadqa </option>
+                    {/* <option value="fitrana_2026">Fitrana </option> */}
+                    {/* <option value="qurbani-baraye-mustehqeen">Qurbani </option> */}
+                  </>
+                )}
               </select>
             </span>
           </div>
@@ -647,25 +1126,77 @@ const CheckoutForm = () => {
               />
             </div>
           </div>
-
-          <div className="input-item input-item-textarea ltn__custom-icon checkout-panel__field checkout-panel__field--textarea">
-            <textarea
-              name="address"
-              placeholder="Enter address"
-              value={formData.address}
+        {/* Donation frequency — monthly recurring (Stripe); disabled while Stripe UI is commented out */}
+        {/* {testCheckout && (
+        <div
+          className={
+            !isQurbaniCheckout
+              ? 'checkout-panel__field checkout-panel__field--full'
+              : 'checkout-panel__field'
+          }
+        >
+          <select
+            className="checkout-panel__input checkout-panel__select"
+            value={formData.donation_frequency}
+            onChange={(e) => setFormData((prev) => ({ ...prev, donation_frequency: e.target.value }))}
+          >
+            <option value="once">Give Once only</option>
+            <option value="monthly">Give Monthly (Stripe)</option>
+          </select>
+        </div>
+        )} */}
+        {isQurbaniCheckout && (
+          <div className="input-item input-item-name ltn__custom-icon checkout-panel__field">
+            {/* <label className="donation-form-label" htmlFor="checkout-on-behalf-names">
+              On Behalf Names
+            </label> */}
+            <input
+              id="checkout-on-behalf-names"
+              type="text"
+              name="on_behalf_names"
+              placeholder="Enter names (comma-separated)"
+              value={formData.on_behalf_names}
               onChange={handleInputChange}
-              className="checkout-panel__input checkout-panel__textarea"
-              rows="4"
+              className="checkout-panel__input"
             />
           </div>
+        )}
+
+        <div className="input-item input-item-name ltn__custom-icon checkout-panel__field checkout-panel__field--full">
+          {/* <label className="donation-form-label" htmlFor="checkout-address">
+            Address
+          </label> */}
+          <input
+            id="checkout-address"
+            type="text"
+            name="address"
+            placeholder="Enter address"
+            value={formData.address}
+            onChange={handleInputChange}
+            className="checkout-panel__input"
+          />
+        </div>
+
+        </div>
+
+        {/* Notification / campaign subscription */}
+        <div className="checkout-panel__field checkout-panel__field--checkbox">
+          <label className="checkout-panel__checkbox-label">
+            <input
+              type="checkbox"
+              name="notification_subscription"
+              checked={formData.notification_subscription}
+              onChange={(e) => setFormData((prev) => ({ ...prev, notification_subscription: e.target.checked }))}
+              className="checkout-panel__checkbox"
+            />
+            <span>Subscribe to email and WhatsApp for notifications and campaign updates</span>
+          </label>
         </div>
 
         {/* Payment Method Section */}
-        <h5 className="checkout-panel__title-2">Donate Via :</h5>
-
         <div className="row">
                   {/* blinq payment option */}
-                  <div className="col-md-6">
+          {/* <div className="col-md-6">
             <div className="input-item">
               <div
                 className={`payment-option ${isSubmitting || isLoading ? 'payment-option--disabled' : ''}`}
@@ -676,11 +1207,13 @@ const CheckoutForm = () => {
                 }}
               >
                 <div className="payment-icon">
-                  <i className="fas fa-university"></i>
+                  <CiCreditCard2 />
                 </div>
                 <div className="payment-content">
-                  <h6>Credit, Debit Card, Jazz Cash, EasyPaisa</h6>
-                  <p>Blinq's Secure online payment gateway</p>
+                  <h6>Pay with Bank Account (One Link)</h6>
+                  {formData.donation_frequency === 'monthly' && (
+                    <span className="payment-option-badge">Recurring</span>
+                  )}
                   <div className="payment-selection-options"></div>
                 </div>
                 {isLoading && (
@@ -690,10 +1223,11 @@ const CheckoutForm = () => {
                 )}
               </div>
             </div>
-          </div>
-          
-              {/* PayFast payment option */}
-              <div className="col-md-6">
+          </div> */}
+
+          {/* PayFast — production /checkout only */}
+          {!testCheckout && (
+          <div className="col-12">
             <div className="input-item">
               <div
                 className={`payment-option ${isSubmitting || isLoading ? 'payment-option--disabled' : ''}`}
@@ -704,13 +1238,13 @@ const CheckoutForm = () => {
                 }}
               >
                 <div className="payment-icon">
-                  <i className="fas fa-credit-card"></i>
+                  <CiCreditCard2 />
                 </div>
                 <div className="payment-content">
-                  <h6>Credit, Debit Card</h6>
-                  <p>Payfast's (Faysal Bank) Secure online payment gateway</p>
+                  <h6>Credit / Debit Card</h6>
+                  <span className="payment-option-badge payment-option-badge--info">PayFast</span>
                 </div>
-                {isLoading && (
+                {isLoading === 'payfast' && (
                   <div className="payment-loading">
                     <span>Processing...</span>
                   </div>
@@ -718,13 +1252,133 @@ const CheckoutForm = () => {
               </div>
             </div>
           </div>
+          )}
+
+          {/* Alfalah account (SMS + email OTAC) — disabled */}
+          {/* <div className="col-md-6">
+            <div className="input-item">
+              <div
+                className={`payment-option ${isSubmitting || isLoading ? 'payment-option--disabled' : ''}`}
+                onClick={(e) => {
+                  if (!isSubmitting && !isLoading) {
+                    handleAlfalahPayment(e, '2')
+                  }
+                }}
+              >
+                <div className="payment-icon">
+                  <CiCreditCard2 />
+                </div>
+                <div className="payment-content">
+                  <h6>Bank Alfalah — Account</h6>
+                  <span className="payment-option-badge payment-option-badge--info">SMS + email codes</span>
+                </div>
+                {isLoading === 'alfalah' && (
+                  <div className="payment-loading">
+                    <span>Processing...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div> */}
+
+                        {/* Meezan payment option */}
+          {/* <div className="col-md-6">
+            <div className="input-item">
+              <div
+                className={`payment-option ${isSubmitting || isLoading ? 'payment-option--disabled' : ''}`}
+                onClick={(e) => {
+                  if (!isSubmitting && !isLoading) {
+                    handleSubmit(e, 'meezan')
+                  }
+                }}
+              >
+                <div className="payment-icon">
+                  <CiCreditCard2 />
+                </div>
+                <div className="payment-content">
+                  <h6>Pay Securely with Credit/Debit Card (2nd)</h6>
+                  {formData.donation_frequency === 'monthly' && (
+                    <span className="payment-option-badge">Recurring</span>
+                  )}
+                </div>
+                {isLoading === 'meezan' && (
+                  <div className="payment-loading">
+                    <span>Processing...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div> */}
+          
+
+          
 
 
+          {/* Stripe — /test-checkout (commented out; Alfalah only for now) */}
+          {/* {testCheckout && (
+          <div className="col-md-6">
+            <div className="input-item">
+              <div
+                className={`payment-option ${isSubmitting || isLoading ? 'payment-option--disabled' : ''}`}
+                onClick={(e) => {
+                  if (!isSubmitting && !isLoading) {
+                    handleSubmit(e, STRIPE_DONATION_METHOD)
+                  }
+                }}
+              >
+                <div className="payment-icon">
+                  <CiCreditCard2 />
+                </div>
+                <div className="payment-content">
+                  <h6>Pay with Stripe</h6>
+                  <span className="payment-option-badge payment-option-badge--info">Card</span>
+                  {isMonthlyDonationFrequency(formData.donation_frequency) && (
+                    <span className="payment-option-badge">Monthly</span>
+                  )}
+                </div>
+                {isLoading === STRIPE_DONATION_METHOD && (
+                  <div className="payment-loading">
+                    <span>Processing...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          )} */}
+
+          {/* Bank Alfalah — /test-checkout only */}
+          {testCheckout && (
+          <div className="col-12">
+            <div className="input-item">
+              <div
+                className={`payment-option ${isSubmitting || isLoading ? 'payment-option--disabled' : ''}`}
+                onClick={(e) => {
+                  if (!isSubmitting && !isLoading) {
+                    handleSubmit(e, 'alfalah')
+                  }
+                }}
+              >
+                <div className="payment-icon">
+                  <CiCreditCard2 />
+                </div>
+                <div className="payment-content">
+                  <h6>Credit / Debit Card</h6>
+                  <span className="payment-option-badge payment-option-badge--info">Bank Alfalah</span>
+                </div>
+                {isLoading === 'alfalah' && (
+                  <div className="payment-loading">
+                    <span>Processing...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          )}
         </div>
       </form>
     </section>
+    </>
   )
 }
 
 export default CheckoutForm
-

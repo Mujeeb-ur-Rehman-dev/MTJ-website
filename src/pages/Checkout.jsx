@@ -1,9 +1,7 @@
-import React, { Suspense, lazy, useMemo } from 'react'
+import React, { Suspense, lazy, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useDonation } from '../contexts/DonationContext'
-import PageHeader from '../components/pageHeader/PageHeader'
 // import image1 from '../assets/img/projects/apna_ghr.webp'
-import CheckoutImage from '../assets/img/checkout/checkout.jpg'
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver'
 
 const CheckoutForm = lazy(() =>
@@ -13,12 +11,27 @@ const DonationCta = lazy(() => import('../components/donationCta/DonationCta'))
 const Footer = lazy(() => import('../components/footer/Footer'))
 const DonationSidebar = lazy(() => import('../components/donation/projects_menu/DonationSidebar'))
 
+const TEST_CHECKOUT_DEFAULT_AMOUNT = 222
+
 const Checkout = () => {
   const location = useLocation()
-  const { amount } = useDonation() 
-  
+  const testCheckout = location.pathname === '/test-checkout'
+  const { amount, setDonationFormData } = useDonation()
+
+  useEffect(() => {
+    if (!testCheckout || (amount && amount > 0)) return
+    setDonationFormData({
+      amount: String(TEST_CHECKOUT_DEFAULT_AMOUNT),
+      finalAmount: TEST_CHECKOUT_DEFAULT_AMOUNT,
+      customAmount: TEST_CHECKOUT_DEFAULT_AMOUNT,
+      currency: 'PKR',
+      category: 'General',
+      donation_type: 'general',
+    })
+  }, [testCheckout, amount, setDonationFormData])
+
   // Use total amount from context (already calculated from all sources)
-  const totalAmount = amount || 0
+  const totalAmount = amount || (testCheckout ? TEST_CHECKOUT_DEFAULT_AMOUNT : 0)
 
   // First component after header - loads immediately
   const [formRef, showForm] = useIntersectionObserver({ 
@@ -32,12 +45,10 @@ const Checkout = () => {
 
   return (
     <>
-      <PageHeader title="Checkout"  image={CheckoutImage}/>
-
       <div ref={formRef}>
         {showForm && (
           <Suspense fallback={null}>
-            <CheckoutForm />
+            <CheckoutForm testCheckout={testCheckout} />
           </Suspense>
         )}
       </div>

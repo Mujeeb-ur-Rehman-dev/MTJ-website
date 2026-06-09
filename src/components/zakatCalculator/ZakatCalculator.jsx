@@ -7,7 +7,10 @@ import GoldTab from './tabs/GoldTab'
 import SilverTab from './tabs/SilverTab'
 import ResultSection from './ResultSection'
 import { fetchGoldSilverPrices } from '../../services/zakatService'
+import goldBarImage from '../../assets/img/zakat/Gold icon.svg'
 
+import silverBarImage from '../../assets/img/zakat/Silver icon.svg'
+import cashIcon from '../../assets/img/zakat/Cash icon.svg'
 const ZakatCalculator = () => {
   const [activeTab, setActiveTab] = useState('eligibility')
   
@@ -27,14 +30,23 @@ const ZakatCalculator = () => {
   // Gold state
   const [goldWeight, setGoldWeight] = useState('')
   const [goldUnit, setGoldUnit] = useState('tola')
-  const [goldPrice, setGoldPrice] = useState('')
+  const [goldKaratPrices] = useState({
+    24: 482500,
+    22: 442405,
+    21: 422296,
+    18: 361968
+  })
+  const [goldPrice, setGoldPrice] = useState('482500')
+  const [goldKarat, setGoldKarat] = useState(24)
+  const [useCustomGoldPrice, setUseCustomGoldPrice] = useState(false)
   
   // Silver state
   const [silverWeight, setSilverWeight] = useState('')
   const [silverUnit, setSilverUnit] = useState('tola')
-  const [silverPrice, setSilverPrice] = useState('')
+  const [silverPrice, setSilverPrice] = useState('7706')
+  const [useCustomSilverPrice, setUseCustomSilverPrice] = useState(false)
   
-  // Nisab method - no longer needed as it's auto-determined, but keeping for backward compatibility
+  // Nisab base threshold selection (gold or silver)
   const [nisabMethod, setNisabMethod] = useState('gold')
   
   // State for fetched prices and calculated Nisab amounts
@@ -60,43 +72,57 @@ const ZakatCalculator = () => {
         if (prices.goldPrice || prices.gold_price || prices.gold) {
           const goldPriceValue = prices.goldPrice || prices.gold_price || prices.gold
           const goldPriceNum = parseFloat(goldPriceValue)
-          setGoldPrice(goldPriceValue.toString())
           setFetchedGoldPrice(goldPriceNum)
           
           // Calculate Gold Nisab amount (price per tola * 7.5 tola)
           // Assuming prices from API are per tola
           const goldNisab = goldPriceNum * GOLD_NISAB_TOLA
-          setGoldNisabAmount(goldNisab)
+          setGoldNisabAmount(Math.round(goldNisab))
         }
         
         // Update silver price if available
         if (prices.silverPrice || prices.silver_price || prices.silver) {
           const silverPriceValue = prices.silverPrice || prices.silver_price || prices.silver
           const silverPriceNum = parseFloat(silverPriceValue)
-          setSilverPrice(silverPriceValue.toString())
           setFetchedSilverPrice(silverPriceNum)
           
           // Calculate Silver Nisab amount (price per tola * 52.5 tola)
           // Assuming prices from API are per tola
           const silverNisab = silverPriceNum * SILVER_NISAB_TOLA
-          setSilverNisabAmount(silverNisab)
+          setSilverNisabAmount(Math.round(silverNisab))
         }
       }
     }
     
     loadPrices()
   }, [])
+
+  useEffect(() => {
+    if (!useCustomGoldPrice) {
+      const karatPrice = goldKaratPrices[goldKarat]
+      const displayPrice = goldUnit === 'grams' ? karatPrice / 11.664 : karatPrice
+      setGoldPrice(Math.round(displayPrice).toString())
+    }
+  }, [goldKarat, useCustomGoldPrice, goldUnit, goldKaratPrices])
+
+  useEffect(() => {
+    if (!useCustomSilverPrice && fetchedSilverPrice) {
+    setSilverPrice(Math.round(fetchedSilverPrice).toString())
+    }
+}, [useCustomSilverPrice, fetchedSilverPrice])
   
   // Calculations
   const calculations = useMemo(() => {
+    const toWholeNumber = (value) => Math.round(parseFloat(value) || 0)
+
     // Calculate Net Cash
     const cashTotal = cashItems.reduce((sum, item) => {
-      const amount = parseFloat(item.amount) || 0
+      const amount = toWholeNumber(item.amount)
       return sum + amount
     }, 0)
     
     const debtTotal = debts.reduce((sum, debt) => {
-      const amount = parseFloat(debt.amount) || 0
+      const amount = toWholeNumber(debt.amount)
       return sum + amount
     }, 0)
     
@@ -111,7 +137,7 @@ const ZakatCalculator = () => {
       // If unit is tola, price is per tola, so value = weight * price
       // If unit is grams, price is per gram, so value = weight * price
       // Both cases: value = weight * price (since price matches weight unit)
-      goldValue = weight * price
+      goldValue = Math.round(weight * price)
     }
     
     // Calculate Silver Value
@@ -123,7 +149,7 @@ const ZakatCalculator = () => {
       // If unit is tola, price is per tola, so value = weight * price
       // If unit is grams, price is per gram, so value = weight * price
       // Both cases: value = weight * price (since price matches weight unit)
-      silverValue = weight * price
+      silverValue = Math.round(weight * price)
     }
     
     // Calculate Assets Value
@@ -131,75 +157,63 @@ const ZakatCalculator = () => {
     const assetsTotal = assetsItems.reduce((sum, item) => {
       const quantity = parseFloat(item.quantity) || 0
       const pricePerItem = parseFloat(item.pricePerItem) || 0
-      const amount = parseFloat(item.amount) || 0
+      const amount = toWholeNumber(item.amount)
       // Use calculated value (quantity × price) if both are provided, otherwise use amount
-      const itemValue = (quantity > 0 && pricePerItem > 0) ? (quantity * pricePerItem) : amount
+      const itemValue = (quantity > 0 && pricePerItem > 0)
+        ? Math.round(quantity * pricePerItem)
+        : amount
       return sum + itemValue
     }, 0)
     
     // Net Zakatable Wealth
     const netWealth = netCash + assetsTotal + goldValue + silverValue
     
-    // Calculate Nisab Value - Use fetched prices from API (preferred) or user-entered prices
-    // Priority: Gold-based (tola) > Silver-based (tola)
+    // Calculate Nisab Value based on user-selected base threshold (gold or silver)
     let nisabValue = 0
-    let usedNisabMethod = null
-    
-    // Use fetched prices from API if available, otherwise use user-entered prices
-    if (fetchedGoldPrice && goldNisabAmount) {
-      // Use the pre-calculated gold Nisab amount from API
-      nisabValue = goldNisabAmount
-      usedNisabMethod = 'gold'
-    } else if (fetchedSilverPrice && silverNisabAmount) {
-      // Use the pre-calculated silver Nisab amount from API
-      nisabValue = silverNisabAmount
-      usedNisabMethod = 'silver'
-    } else if (goldPrice) {
-      // Fallback to user-entered gold price
-      const price = parseFloat(goldPrice) || 0
-      // Price unit matches weight unit, so convert to per gram if needed
-      const pricePerGram = goldUnit === 'tola' ? price / 11.664 : price
-      // Use gold-based method (87.48g)
-      nisabValue = GOLD_NISAB_GRAMS * pricePerGram
-      usedNisabMethod = 'gold'
-    } else if (silverPrice) {
-      // Fallback to user-entered silver price
-      const price = parseFloat(silverPrice) || 0
-      // Price unit matches weight unit, so convert to per gram if needed
-      const pricePerGram = silverUnit === 'tola' ? price / 11.664 : price
-      // Use silver-based method (612.36g)
-      nisabValue = SILVER_NISAB_GRAMS * pricePerGram
-      usedNisabMethod = 'silver'
+    let usedNisabMethod = nisabMethod
+
+    if (nisabMethod === 'gold') {
+      if (goldNisabAmount) {
+        nisabValue = Math.round(goldNisabAmount)
+      } else if (goldPrice) {
+        const price = parseFloat(goldPrice) || 0
+        const pricePerGram = goldUnit === 'tola' ? price / TOLA_TO_GRAMS : price
+        nisabValue = Math.round(GOLD_NISAB_GRAMS * pricePerGram)
+      }
+    } else {
+      if (silverNisabAmount) {
+        nisabValue = Math.round(silverNisabAmount)
+      } else if (silverPrice) {
+        const price = parseFloat(silverPrice) || 0
+        const pricePerGram = silverUnit === 'tola' ? price / TOLA_TO_GRAMS : price
+        nisabValue = Math.round(SILVER_NISAB_GRAMS * pricePerGram)
+      }
     }
     
     // Eligibility Check
     // Zakat is only due if net wealth EXCEEDS (not just equals) the Nisab threshold
     let eligibilityStatus = 'checking'
     if (nisabValue > 0) {
-      if (netWealth <= nisabValue) {
+      if (netWealth < nisabValue) {
         eligibilityStatus = 'below-nisab'
-      } else if (netWealth > nisabValue) {
+      } else if (netWealth >= nisabValue) {
         eligibilityStatus = 'due'
       }
     }
     
-    // Calculate Zakat Due - ONLY if wealth exceeds Nisab threshold
     let zakatDue = 0
     let zakatCash = 0
     let zakatAssets = 0
     let zakatGold = 0
     let zakatSilver = 0
     
-    // Only calculate Zakat if net wealth EXCEEDS the Nisab threshold
-    if (eligibilityStatus === 'due' && netWealth > nisabValue && nisabValue > 0) {
-      zakatDue = netWealth * ZAKAT_RATE
-      // Calculate zakat for each category proportionally
-      if (netWealth > 0) {
-        zakatCash = (netCash / netWealth) * zakatDue
-        zakatAssets = (assetsTotal / netWealth) * zakatDue
-        zakatGold = (goldValue / netWealth) * zakatDue
-        zakatSilver = (silverValue / netWealth) * zakatDue
-      }
+    if (eligibilityStatus === 'due' && netWealth >= nisabValue && nisabValue > 0) {
+      // Keep all category and total amounts as whole numbers (non-decimal).
+      zakatCash = Math.round(netCash * ZAKAT_RATE)
+      zakatAssets = Math.round(assetsTotal * ZAKAT_RATE)
+      zakatGold = Math.round(goldValue * ZAKAT_RATE)
+      zakatSilver = Math.round(silverValue * ZAKAT_RATE)
+      zakatDue = zakatCash + zakatAssets + zakatGold + zakatSilver
     }
     
     return {
@@ -228,42 +242,103 @@ const ZakatCalculator = () => {
     goldPrice,
     silverWeight,
     silverUnit,
-    silverPrice
+    silverPrice,
+    nisabMethod,
+    fetchedGoldPrice,
+    fetchedSilverPrice,
+    goldNisabAmount,
+    silverNisabAmount
   ])
+
+  const approxGoldPerTola = useMemo(() => {
+    if (fetchedGoldPrice) return fetchedGoldPrice
+    const parsed = parseFloat(goldPrice) || 0
+    return goldUnit === 'grams' ? parsed * TOLA_TO_GRAMS : parsed
+  }, [fetchedGoldPrice, goldPrice, goldUnit])
+
+  const approxSilverPerTola = useMemo(() => {
+    if (fetchedSilverPrice) return fetchedSilverPrice
+    const parsed = parseFloat(silverPrice) || 0
+    return silverUnit === 'grams' ? parsed * TOLA_TO_GRAMS : parsed
+  }, [fetchedSilverPrice, silverPrice, silverUnit])
   
   const tabs = [
     { id: 'eligibility', label: 'Eligibility', icon: '✓' },
-    { id: 'cash', label: 'Cash', icon: '💰' },
+    { id: 'cash', label: 'Cash', icon: cashIcon, isImage: true },
     { id: 'assets', label: 'Assets', icon: '🏢' },
-    { id: 'gold', label: 'Gold', icon: '🥇' },
-    { id: 'silver', label: 'Silver', icon: '🥈' }
+    { id: 'gold', label: 'Gold', icon: goldBarImage, isImage: true },
+    { id: 'silver', label: 'Silver', icon: silverBarImage, isImage: true }
   ]
   
   return (
     <div className="zakat-calculator-page container py-48">
       <div className="zakat-header text-center mb-48">
-        <h1 className="heading-secondary mb-16">Zakat Calculator</h1>
-        <p className="text-lg muted max-w-md mx-auto">
-          Calculate your Zakat obligation according to Islamic principles. 
-          Zakat is 2.5% of your net zakatable wealth when it reaches Nisab and completes one lunar year.
+        <h1 className="heading-secondary mb-16">Calculate your Zakat with Clarity using our Zakat Calculator</h1>
+        <p className="text-lg muted w-full mx-auto">
+        Ramadan is a time of reflection, generosity, and fulfilling our obligations. Zakat is one of the most important pillars of Islam, and paying it correctly ensures that your wealth benefits those who need it most. Our online Zakat Calculator helps you determine the exact amount of Zakat due on your wealth, savings, gold, silver, business assets, and other eligible assets.
         </p>
+        <p className="text-lg muted w-full mx-auto test_target">
+        Enter your assets, savings, and liabilities, and our calculator will automatically calculate the Zakat amount. Once done, you can donate online to support verified beneficiaries across Pakistan.
+        </p>
+        <div className="zakat-nisab-selector mt-24">
+          <h3 className="zakat-nisab-selector__title">Nisab Threshold</h3>
+          <div className="zakat-nisab-selector__options">
+            <label className="zakat-nisab-option">
+              <input
+                type="radio"
+                name="nisab-method"
+                value="gold"
+                checked={nisabMethod === 'gold'}
+                onChange={(e) => setNisabMethod(e.target.value)}
+              />
+              <span>
+                Value of Gold <strong>(approximately Rs. {Math.round(approxGoldPerTola).toLocaleString('en-PK')}/Tola)</strong>
+              </span>
+            </label>
+            <label className="zakat-nisab-option">
+              <input
+                type="radio"
+                name="nisab-method"
+                value="silver"
+                checked={nisabMethod === 'silver'}
+                onChange={(e) => setNisabMethod(e.target.value)}
+              />
+              <span>
+                Value of Silver <strong>(approximately Rs. {Math.round(approxSilverPerTola).toLocaleString('en-PK')}/Tola)</strong>
+              </span>
+            </label>
+          </div>
+        </div>
+
       </div>
       
       <div className="zakat-calculator-wrapper">
         <div className="zakat-main-content">
           {/* Tabs Navigation */}
-          <div className="zakat-tabs-nav">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                className={`zakat-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <span className="zakat-tab-icon">{tab.icon}</span>
-                <span className="zakat-tab-label">{tab.label}</span>
-              </button>
-            ))}
-          </div>
+        <div className="zakat-tabs-nav">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`zakat-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span className="zakat-tab-icon">
+                {tab.isImage ? (
+                  <img
+                    src={tab.icon}
+                    alt={tab.label}
+                    className="zakat-tab-icon-img"
+                  />
+                ) : (
+                  tab.icon
+                )}
+              </span>
+
+              <span className="zakat-tab-label">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
           
           {/* Tab Content */}
           <div className="zakat-tab-content">
@@ -300,6 +375,10 @@ const ZakatCalculator = () => {
                 setGoldUnit={setGoldUnit}
                 goldPrice={goldPrice}
                 setGoldPrice={setGoldPrice}
+                goldKarat={goldKarat}
+                setGoldKarat={setGoldKarat}
+                useCustomGoldPrice={useCustomGoldPrice}
+                setUseCustomGoldPrice={setUseCustomGoldPrice}
               />
             )}
             
@@ -311,6 +390,8 @@ const ZakatCalculator = () => {
                 setSilverUnit={setSilverUnit}
                 silverPrice={silverPrice}
                 setSilverPrice={setSilverPrice}
+                useCustomSilverPrice={useCustomSilverPrice}
+                setUseCustomSilverPrice={setUseCustomSilverPrice}
               />
             )}
           </div>

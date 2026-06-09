@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import './DonationFeatures.css'
-import DisasterRelief from '../../assets/img/projects/icons/disaster_relief.png'
-import Health from '../../assets/img/projects/icons/health.png'
-import Education from '../../assets/img/projects/icons/education.png'
-import CleanWater from '../../assets/img/projects/icons/clean_water.png'
-import ApnaGhar from '../../assets/img/projects/icons/apnaghar.png'
-import Qurbani from '../../assets/img/projects/icons/qurbani.png'
-import KASB from '../../assets/img/projects/icons/kasb.png'
-import Seeds from '../../assets/img/projects/icons/seeds.png'
-import Community from '../../assets/img/projects/icons/community.png'
-import AASLab from '../../assets/img/projects/icons/aaslab.png'
+import DisasterRelief from '../../assets/img/projects/icons/MTJF_Logos/disaster_relief.svg'
+import Health from '../../assets/img/projects/icons/MTJF_Logos/health.svg'
+import Education from '../../assets/img/projects/icons/MTJF_Logos/education.svg'
+import CleanWater from '../../assets/img/projects/icons/MTJF_Logos/clean_water.svg'
+import ApnaGhar from '../../assets/img/projects/icons/MTJF_Logos/apnaghar.svg'
+import Qurbani from '../../assets/img/projects/icons/MTJF_Logos/qurbani.svg'
+import KASB from '../../assets/img/projects/icons/MTJF_Logos/kasb.svg'
+import Seeds from '../../assets/img/projects/icons/MTJF_Logos/seeds.svg'
+import Community from '../../assets/img/projects/icons/MTJF_Logos/community.svg'
+import AASLab from '../../assets/img/projects/icons/MTJF_Logos/aaslab.svg'
 import { Link } from 'react-router-dom'
 
 const ICON_PROPS = {
@@ -92,14 +92,14 @@ const FEATURE_ITEMS = [
       <img src={Seeds} alt="Seeds of Change - Environmental conservation and tree planting program icon"  {...ICON_PROPS}/>
     )
   },
-  {
-    id: 'qurbani-barai-mustehqeen',
-    title: 'Qurbani Barai Mustehqeen',
-    description: 'Sharing the blessings of Qurbani and Eid with families who rarely enjoy fresh meat.',
-    icon: (
-     <img src={Qurbani} alt="Qurbani Barai Mustehqeen - Qurbani meat distribution program icon" {...ICON_PROPS}/>
-)
-  },
+//   {
+//     id: 'qurbani-baraye-mustehqeen',
+//     title: 'Qurbani Baraye Mustehqeen',
+//     description: 'Sharing the blessings of Qurbani and Eid with families who rarely enjoy fresh meat.',
+//     icon: (
+//      <img src={Qurbani} alt="Qurbani Baraye Mustehqeen - Qurbani meat distribution program icon" {...ICON_PROPS}/>
+// )
+//   },
   {
     id: 'aas-lab-diagnostics',
     title: 'AAS LAB',

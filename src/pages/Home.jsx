@@ -4,6 +4,10 @@ import { ALL_PROJECTS_DATA } from "../data/projectsData";
 import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 import BrandArea from "../components/brands/brands";
   import QuickBlogs from "../components/quickblogs";
+import HomeInfoSection from "../components/homeInfoSection/HomeInfoSection";
+import ProjectsTestimonial from "../components/projectsTestimonial/ProjectsTestimonial";
+import { home_testimonials } from "../utils/variables";
+import Stats from "../components/stats/Stats";
 // import HeroWithTypingTest from "../components/hero/HeroWithTyping.test";
 const HeroContent = lazy(() =>
   import("../components/heroContent/HeroContent")
@@ -11,6 +15,7 @@ const HeroContent = lazy(() =>
 const DonationForm = lazy(() =>
   import("../components/donationForm/DonationForm")
 );
+
 const DonationFeatures = lazy(() =>
   import("../components/donationfeatures/DonationFeatures")
 );
@@ -18,7 +23,6 @@ const CtaCircles = lazy(() =>
   import("../components/ctaCircles/CtaCircles")
 );
 const Projects = lazy(() => import("../components/projects/Projects"));
-const Stats = lazy(() => import("../components/stats/Stats"));
 const Events = lazy(() => import("../components/events/Events"));
 const DonationCta = lazy(() =>
   import("../components/donationCta/DonationCta")
@@ -27,7 +31,7 @@ const Footer = lazy(() => import("../components/footer/Footer"));
 const Newsletter = lazy(() => import("../components/newsletter/Newsletter"));
 // const Partners = lazy(() => import("../components/partners/Partners"));
 
-const Home = () => {
+const Home = ({ showHomeInfoSection = false }) => {
   // Simple progressive loading - components load when they're about to enter viewport
   const [heroContentRef, showHeroContent] = useIntersectionObserver({ 
     rootMargin: '50px',
@@ -55,11 +59,20 @@ const Home = () => {
               <DonationFeatures />
               <CtaCircles />
               <Projects />
+              {/* <ImpactNumbers /> */}
               <Stats />
               <BrandArea />
+              <ProjectsTestimonial
+                videos={home_testimonials.videos}
+                title={home_testimonials.title}
+                subtitle={home_testimonials?.subtitle}
+              />
+              {showHomeInfoSection && <HomeInfoSection />}
+              {/* <QuickBlogs /> 
+              <Events /> */}
               <Newsletter />
               <DonationCta />
-              <Footer />
+               <Footer />
       </div>
     </>
   );

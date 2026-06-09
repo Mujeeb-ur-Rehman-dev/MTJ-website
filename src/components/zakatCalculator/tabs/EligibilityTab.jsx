@@ -6,9 +6,9 @@ const EligibilityTab = ({ goldNisabAmount, silverNisabAmount, fetchedGoldPrice, 
     <div className="eligibility-tab">
       {/* Zakat Eligibility Criteria */}
       <div className="form-group mb-32">
-        {/* <label className="form-label mb-12">
+        <label className="form-label mb-12">
           <strong>Zakat Eligibility Criteria</strong>
-        </label> */}
+        </label>
         <div className="info-box bg-muted p-16 rounded mb-16">
           <p className="text-sm mb-12">
             <strong>Zakat is only applicable if you have:</strong>
@@ -36,20 +36,20 @@ const EligibilityTab = ({ goldNisabAmount, silverNisabAmount, fetchedGoldPrice, 
               </p>
               {goldNisabAmount && (
                 <p className="text-sm mb-8">
-                  <strong>Gold-based Nisab:</strong> Rs. {goldNisabAmount.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <strong>Gold-based Nisab:</strong> Rs. {goldNisabAmount.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   {fetchedGoldPrice && (
                     <span className="text-muted" style={{ fontSize: 'var(--fs-14)', display: 'block', marginTop: '4px' }}>
-                      (Rs. {fetchedGoldPrice.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per tola × 7.5 tola)
+                      (Rs. {fetchedGoldPrice.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} per tola × 7.5 tola)
                     </span>
                   )}
                 </p>
               )}
               {silverNisabAmount && (
                 <p className="text-sm mb-0">
-                  <strong>Silver-based Nisab:</strong> Rs. {silverNisabAmount.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <strong>Silver-based Nisab:</strong> Rs. {silverNisabAmount.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   {fetchedSilverPrice && (
                     <span className="text-muted" style={{ fontSize: 'var(--fs-14)', display: 'block', marginTop: '4px' }}>
-                      (Rs. {fetchedSilverPrice.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per tola × 52.5 tola)
+                      (Rs. {fetchedSilverPrice.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} per tola × 52.5 tola)
                     </span>
                   )}
                 </p>

@@ -40,7 +40,8 @@ const ProjectDonationCard = ({ project, onUpdate }) => {
       // donationType: type,
       basePrice: basePrice,
       customAmount: parseFloat(custom) || 0,
-      totalAmount: amount
+      totalAmount: amount,
+      templateCode: project?.templateCode || null
     })
   }
 
@@ -92,7 +93,7 @@ const ProjectDonationCard = ({ project, onUpdate }) => {
           onChange={handleDonationTypeChange}
         >
           <option value="GENERAL">GENERAL</option>
-          <option value="SADKA">SADKA</option>
+          <option value="SADQA">SADQA</option>
           <option value="ZAKAT">ZAKAT</option>
         </select>
       </div>

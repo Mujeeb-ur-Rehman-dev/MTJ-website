@@ -15,7 +15,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-48);
-  align-items: center;
+  align-items: start;
 }
 
 /* When no image, use single column layout */
@@ -110,6 +110,13 @@
   gap: var(--space-16);
 }
 
+.media-content-list-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
 .media-content-list-icon {
   flex-shrink: 0;
   width: 24px;
@@ -127,8 +134,133 @@
   flex: 1;
 }
 
+.media-content-list-inline-strong {
+  font-weight: 700;
+  color: var(--color-900);
+}
+
+.media-content-list-heading {
+  font-size: var(--fs-20);
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--color-900);
+}
+
+.media-content-sub-list {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.media-content-sub-list-item {
+  font-size: var(--fs-15);
+  line-height: 1.6;
+  color: var(--color-700);
+}
+
 .media-content-cta {
   align-self: flex-start;
+}
+
+/* CTA Wrapper for text + button */
+.media-content-cta-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+  flex-wrap: wrap;
+}
+
+.media-content-cta-text {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: var(--color-700);
+}
+
+/* Container for multiple buttons */
+.media-content-cta-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+}
+
+/* Arabic Dua Text */
+.media-content-arabic-text {
+  text-align: center;
+  font-size: var(--fs-24);
+  line-height: 2;
+  color: var(--color-800);
+  font-weight: 600;
+  direction: rtl;
+  font-family: 'Traditional Arabic', 'Scheherazade New', 'Noto Naskh Arabic', serif;
+  margin: var(--space-16) 0 var(--space-8) 0;
+  padding: var(--space-16) var(--space-24);
+}
+
+@media (max-width: 768px) {
+  .media-content-arabic-text {
+    font-size: var(--fs-20);
+    padding: var(--space-12) var(--space-16);
+  }
+}
+
+/* Quran Ayat / Hadith Styling */
+.media-content-quran-ayat {
+  text-align: center;
+  padding: var(--space-24) var(--space-32);
+  margin: var(--space-24) 0;
+  background: linear-gradient(135deg, rgba(var(--color-primary-rgb, 45, 106, 79), 0.05) 0%, rgba(var(--color-primary-rgb, 45, 106, 79), 0.02) 100%);
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--color-primary);
+  border-right: 4px solid var(--color-primary);
+}
+
+.media-content-quran-ayat__text {
+  font-size: var(--fs-18);
+  font-style: italic;
+  line-height: 1.8;
+  color: var(--color-800);
+  margin: 0 0 var(--space-12) 0;
+  font-weight: 500;
+}
+
+.media-content-quran-ayat__text::before {
+  content: '"';
+  font-size: var(--fs-24);
+  color: var(--color-primary);
+  margin-right: 4px;
+}
+
+.media-content-quran-ayat__text::after {
+  content: '"';
+  font-size: var(--fs-24);
+  color: var(--color-primary);
+  margin-left: 4px;
+}
+
+.media-content-quran-ayat__reference {
+  font-size: var(--fs-14);
+  color: var(--color-primary);
+  font-weight: 600;
+  margin: 0;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .media-content-quran-ayat {
+    padding: var(--space-20) var(--space-16);
+  }
+
+  .media-content-quran-ayat__text {
+    font-size: var(--fs-16);
+  }
+
+  .media-content-quran-ayat__reference {
+    font-size: var(--fs-13);
+  }
 }
 
 .media-content-image {
@@ -181,6 +313,9 @@
   .media-content-list-item {
     align-items: center;
   }
+  .media-content-list-heading {
+    font-size: var(--fs-18);
+  }
   .media-content-list-icon {
     width: 12px;
     height: 12px;
@@ -206,6 +341,23 @@
     text-align: left;
   }
 
+  .media-content-cta-wrapper {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-12);
+  }
+
+  .media-content-cta-buttons {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .media-content-cta-buttons .media-content-cta {
+    width: 100%;
+    text-align: center;
+  }
+
   .media-content-image {
     max-height: 350px;
   }
@@ -227,5 +379,26 @@
   .media-content-image-img {
     max-height: 300px;
   }
+}
+
+/* Video embed wrapper - 16:9 responsive */
+.media-content-video-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.media-content-video-wrapper iframe,
+.media-content-video-element {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
 }
 

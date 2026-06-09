@@ -1,41 +1,39 @@
 import { useState, useEffect, useRef } from 'react'
 import './Stats.css'
-import floodIcon from '../../assets/img/projects/icons2/flood_ helped.webp';
-import logo_one from '../../assets/img/projects/icons2/logo_one.webp';
-
-import Medicine from '../../assets/img/projects/icons2/medicine.webp';
-import Home from '../../assets/img/projects/icons2/home.webp';
 import Water from '../../assets/img/projects/icons2/water.webp';
 import Scholarship from '../../assets/img/projects/icons2/scholarship.webp';
-import AidPackages from '../../assets/img/projects/icons2/aid_packages.webp';
 import Food from '../../assets/img/projects/icons2/food.webp';
 import Education from '../../assets/img/projects/icons2/education.webp';
+import Medicine from '../../assets/img/projects/icons2/medicine.webp';
+import DreamSchool from '../../assets/img/projects/icons2/Dream School.webp';
+import MarriageGift from '../../assets/img/projects/icons2/Marrigae Gift.webp';
 const STATS_DATA = [
   {
     id: 'floods',
     icon: (
-        <img src={logo_one} alt="flood icon" />
+        // <img src={logo_one} alt="flood icon" /> 
+        <img src={Education} alt="Disaster Relief Icon" />
       ),
-    statistic: '400,000+',
-    description: 'People helped during the 2022 and 2025 floods of Pakistan',
+    statistic: '380,000+',
+    description: 'Disaster Relief',
     iconColor: '#f6b319'
   },
   {
     id: 'health',
     icon: (
-      <img src={Medicine} alt="Medicine icon" />
+        <img src={Medicine} alt="Health Icon" />
    ),
-    statistic: '200,000+',
-    description: 'Free of cost tests and medicines provided',
+    statistic: '950,000+',
+    description: 'Medical Assistance',
     iconColor: '#2cade3'
   },
   {
     id: 'homes',
     icon: (
-      <img src={Home} alt="home icon" />
+      <img src={Food} alt="Homes Icon" />
     ),
-    statistic: '150,000+',
-    description: 'Ration bags distributed',
+    statistic: '200,000+', 
+    description: 'Ration Bags Distributed',
     iconColor: '#e02228'
   },
   {
@@ -43,17 +41,8 @@ const STATS_DATA = [
     icon: (
      <img src={Water} alt="water icon" />
     ),
-    statistic: '300,000+',
-    description: 'With access to clean water',
-    iconColor: '#53af47'
-  },
-  {
-    id: 'education',
-    icon: (
-      <img src={Education} alt="education icon" />
-    ),
-    statistic: '300,000+',
-    description: 'Free of cost lab tests done',
+    statistic: '430+',
+    description: 'Handpumps Installed',
     iconColor: '#53af47'
   },
   {
@@ -61,27 +50,47 @@ const STATS_DATA = [
     icon: (
       <img src={Scholarship} alt="scholarship icon" />
     ),
-    statistic: '6000+',
-    description: 'Scholarships awarded',
+    statistic: '7000+',
+    description: 'Scholarships Awarded',
     iconColor: '#e02228'
   },
   {
+    id: 'floods',
+    icon: (
+        // <img src={logo_one} alt="flood icon" /> 
+        <img src={Education} alt="Education Icon" />
+      ),
+    statistic: '735',
+    description: 'Homes Built',
+    iconColor: '#f6b319'
+  }
+  ,
+  {
     id: 'aid',
     icon: (
-      <img src={AidPackages} alt="aid icon" />
+      <img src={MarriageGift} alt="Marriage Gift Icon" />
   ),
-    statistic: '200,000+',
-    description: 'Aid packages distributed',
+    statistic: '651',
+    description: 'Marriage Gifts',
     iconColor: '#2cade3'
   },
   {
     id: 'food',
     icon: (
-      <img src={Food} alt="food icon" /> 
+      <img src={DreamSchool} alt="Dream School Icon" /> 
     ),
-    statistic: '50,000+ ',
-    description: 'Trees planted',
+    statistic: '9',
+    description: 'Dreams Schools',
     iconColor: '#f6b319'
+  },
+  {
+    id: 'water',
+    icon: (
+     <img src={Water} alt="Water Filteration Plants Icon" />
+    ),
+    statistic: '12',
+    description: 'Water Filteration Plants',
+    iconColor: '#53af47'
   }
 ]
 
@@ -169,7 +178,7 @@ const Stats = () => {
       <div className="stats-header text-center mb-48">
         <h2 className="heading-secondary mb-16">Since 2019 We Have</h2>
         <h2>
-         Brought Hope to 1 Million+ People, with your Help
+         Brought Hope to 2.5 Million+  &nbsp;  People, with your Help
         </h2>
       </div>
 

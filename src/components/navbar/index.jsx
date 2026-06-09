@@ -11,10 +11,15 @@ const navItems = [
   { name: "Home", path: "/home" },
   { name: "About", path: "/about" },
   { name: "Programs", path: "/projects" },
+  // { name: "Appeals", path: "/appeals" },
   // { name: "Blogs", path: "/blogs " },
   { name: "Volunteer", path: "/volunteerRegistration " },
   { name: "Careers", path: "/careers" },
-  { name: "Contact", path: "/contact" }
+  { name: "Contact", path: "/contact" },
+  // { name: "Ramadan 2026", path: "", submenu:[{name:'Zakat', path:'/projects/ramzan-zakat'},{name:'Zakat Calculator', path:'/zakat-calculator'}, {name:'Fitrana', path:'/fitrana'}, {name:'Laylatul Qadr', path:'/laylat-ul-qadar'}, {name:'Gaza Relief', path:'/gaza'}] },
+  // { name: "Media", path: "/media", submenu: [{ name: "Downloads", path: "/media/downloads" }] },
+  // { name: "Qurbani 2026 ", path: "/qurbani2026"},
+  // { name: "Qurbani 2026 ", path: "", submenu:[{name:'Qurbani', path:'/projects/qurbani'}] },
 ];
 
 const Navbar = () => {
@@ -39,9 +44,12 @@ const Navbar = () => {
       const isExactMatch =
         currentPath === itemPath || currentPath === itemPath + ' ';
       const isProjectDetail =
-        item.name === 'Projects' &&
+        item.path.trim() === '/projects' &&
         currentPath.startsWith('/projects/');
-      return isHome || isExactMatch || isProjectDetail;
+      const isAppealsDetail =
+        item.path.trim() === '/appeals' &&
+        currentPath.startsWith('/appeals/');
+      return isHome || isExactMatch || isProjectDetail || isAppealsDetail;
     });
      
      if (matchedItem) {
@@ -94,65 +102,97 @@ const Navbar = () => {
   return (
     <>
     <div className={`nav-container rounded fixed ${isLightTheme ? 'nav-light-theme' : 'nav-dark-theme'}`}>
-        <div className='flex justify-between  items-center'>
+        <div className='nav-row-1'>
             {/* logo section */}
-            <div className='flex items-center logo_section '>
+            <div className='flex items-center logo_section'>
                 <div className='logo'>
                   <Link to="/home">
-                <img src={logo} alt='logo' />
-                </Link>
+                    <img src={logo} alt='logo' />
+                  </Link>
                 </div>
-                {/* <div className='logo-heading'><h1>Molana Tariq Jamil <br /> Foundation</h1></div> */}
             </div>
-            {/* menu section */}
-            {/* <div className='ul-btn'> */}
-             <div className='d-none md:d-block' style={{fontSize:'1vw'}}>
-              <ul className={`hvr flex gap-24 ${isLightTheme ? 'text-white' : 'text-dark'}`} >
+            {/* menu section - desktop only */}
+            <div className='d-none md:d-block' style={{fontSize:'1vw'}}>
+              <ul className={`hvr flex gap-24 ${isLightTheme ? 'text-white' : 'text-dark'}`}>
                  {navItems.map((item) => (
-                <li key={item.name}>
+                <li key={item.name} className={`nav-item ${item.submenu ? 'nav-item-has-sub' : ''}`}>
                   <Link
-                    // to={item.path}
                     className={activeLink === item.name ? "active" : ""}
                     onClick={(e) => {
                       e.preventDefault();
                       handleClick(item.name, item.path);
                     }}
+                    to={item.path}
                   >
                     {item.name}
                   </Link>
+                  {item.submenu && (
+                    <ul className="nav-submenu">
+                      {item.submenu.map((subItem) => (
+                        <li key={subItem.name}>
+                          <Link
+                            to={subItem.path}
+                            className={activeLink === subItem.name ? "active" : ""}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleClick(subItem.name, subItem.path);
+                            }}
+                          >
+                            {subItem.name}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
-                </ul>
-             </div>
+              </ul>
+            </div>
 
-            {/* button section */}
-             <div>
-            <button 
-              className='btn btn--alert btn-donate-animated' 
-              onClick={() => navigate('/donate')}
-              aria-label="Navigate to donation form"
-            >
-              {/* Animated background particles */}
-              {/* <span className="particle particle-1"></span>
-              <span className="particle particle-2"></span> */}
-              <span className="particle particle-3"></span>
-              <span className="particle particle-4"></span>
-              
-              {/* Glowing border */}
-              <span className="glow-border"></span>
-              
-              {/* Button content */}
-              <span className="btn-donate-content">
-                <FcDonate className="btn-donate-icon" size={20} />
-                <span>Donate Now</span>
-              </span>
-            </button>
+            {/* button section - desktop */}
+            <div className='nav-btn-group d-none md:d-flex'>
+              <button 
+                className='btn btn-zakat-nav' 
+                onClick={() => navigate('/zakat-calculator')}
+                aria-label="Navigate to zakat calculator"
+              >
+                <span className="btn-donate-content">
+                  <span>Give Your Zakat</span>
+                </span>
+              </button>
+              <button 
+                className='btn btn--alert btn-donate-animated' 
+                onClick={() => navigate('/donate')}
+                aria-label="Navigate to donation form"
+              >
+                <span className="btn-donate-content">
+                  <FcDonate className="btn-donate-icon" size={20} />
+                  <span>Donate Now</span>
+                </span>
+              </button>
             </div>
             <div className='md:d-none'>
-             <Hamburger/>
+              <Hamburger/>
             </div>
-           </div>
-          </div>
+        </div>
+        {/* Row 2 - mobile only buttons */}
+        <div className='nav-row-2 md:d-none'>
+          <button 
+            className='btn btn-zakat-nav nav-row-2__btn' 
+            onClick={() => navigate('/zakat-calculator')}
+            aria-label="Navigate to zakat calculator"
+          >
+            Give Your Zakat
+          </button>
+          <button 
+            className='btn btn--alert btn-donate-animated nav-row-2__btn'  
+            onClick={() => navigate('/donate')}
+            aria-label="Navigate to donation form"
+          >
+            Donate Now
+          </button>
+        </div>
+      </div>
            <div>
             <Mobilenavbar/>
            </div>

@@ -1,0 +1,149 @@
+.financial-reports-section {
+  background: #f8f6fb;
+}
+
+.financial-reports-header {
+  margin-bottom: var(--space-32);
+}
+
+.financial-reports-subheading {
+  font-size: clamp(1.125rem, 2vw, 1.35rem);
+  font-weight: 600;
+  color: #4b5563;
+  line-height: 1.4;
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+.financial-reports-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-20);
+  max-width: var(--container-xxl, 1320px);
+  margin: 0 auto;
+}
+
+@media (min-width: 1024px) {
+  .financial-reports-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .financial-reports-grid.is-downloads-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Vertical card — cover 1:1; centered, narrow on desktop; slightly wider on mobile */
+.financial-reports-card {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #e6e6e6;
+  box-shadow: 0 8px 24px rgba(19, 16, 34, 0.06);
+}
+
+@media (max-width: 768px) {
+  .financial-reports-card {
+    max-width: 340px;
+  }
+}
+
+.financial-reports-card-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  background: #e8e6ed;
+}
+
+.financial-reports-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  margin-top: -6px;
+}
+
+.financial-reports-card-media-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: linear-gradient(145deg, #e8e6ed 0%, #dcd8e4 100%);
+}
+
+.financial-reports-card-body {
+  padding: var(--space-12) var(--space-14) var(--space-16);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--space-12);
+}
+
+.financial-reports-card-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.35;
+  font-weight: 700;
+  color: #111827;
+  flex: 1;
+}
+
+.financial-reports-actions {
+  display: flex;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+}
+
+.financial-reports-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--space-16);
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: var(--fs-14);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: var(--transition);
+  flex: 1;
+  min-width: 0;
+}
+
+.financial-reports-btn--primary {
+  background: #d80000;
+  color: #fff;
+}
+
+.financial-reports-btn--primary:hover {
+  filter: brightness(0.95);
+}
+
+.financial-reports-btn--outline {
+  background: transparent;
+  color: #111;
+  border-color: #cfcfcf;
+}
+
+.financial-reports-btn--outline:hover {
+  border-color: #111;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+@media (max-width: 400px) {
+  .financial-reports-actions {
+    flex-direction: column;
+  }
+
+  .financial-reports-btn {
+    flex: none;
+    width: 100%;
+  }
+}

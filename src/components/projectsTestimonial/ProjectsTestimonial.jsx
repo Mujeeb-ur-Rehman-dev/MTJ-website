@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import './ProjectsTestimonial.css'
 
 // Extract video IDs from YouTube URLs
 const extractVideoId = (url) => {
   if (!url || typeof url !== 'string') return null
+  const cleanedUrl = url.trim()
+  if (!cleanedUrl) return null
   // Support multiple YouTube URL formats
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
@@ -11,8 +13,11 @@ const extractVideoId = (url) => {
   ]
   
   for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match) return match[1]
+    const match = cleanedUrl.match(pattern)
+    if (match && match[1]) {
+      const normalized = match[1].trim().match(/[a-zA-Z0-9_-]{11}/)
+      if (normalized) return normalized[0]
+    }
   }
   return null
 }
@@ -25,14 +30,14 @@ const ProjectsTestimonial = ({
   const [currentIndex, setCurrentIndex] = useState(0)
   const [cardsPerView, setCardsPerView] = useState(4)
   const [selectedVideoId, setSelectedVideoId] = useState(null)
+  const [translateOffset, setTranslateOffset] = useState(0)
+  const gridRef = useRef(null)
 
   useEffect(() => {
     const updateCardsPerView = () => {
       const width = window.innerWidth
-      if (width < 480) {
+      if (width < 768) {
         setCardsPerView(1)
-      } else if (width < 768) {
-        setCardsPerView(2)
       } else if (width < 992) {
         setCardsPerView(3)
       } else {
@@ -75,7 +80,33 @@ const ProjectsTestimonial = ({
     }
   }, [selectedVideoId])
 
+  useEffect(() => {
+    const calculateOffset = () => {
+      const grid = gridRef.current
+      if (!grid) {
+        setTranslateOffset(0)
+        return
+      }
+
+      const firstCard = grid.querySelector('.projects-testimonial-card')
+      if (!firstCard) {
+        setTranslateOffset(0)
+        return
+      }
+
+      const gridStyles = window.getComputedStyle(grid)
+      const gap = parseFloat(gridStyles.columnGap || gridStyles.gap || '0')
+      const cardWidth = firstCard.getBoundingClientRect().width
+      setTranslateOffset(currentIndex * (cardWidth + gap))
+    }
+
+    calculateOffset()
+    window.addEventListener('resize', calculateOffset)
+    return () => window.removeEventListener('resize', calculateOffset)
+  }, [currentIndex, cardsPerView, videos.length])
+
   const maxIndex = Math.max(0, videos.length - cardsPerView)
+  const isScrollable = videos.length > cardsPerView
 
   const handlePrev = () => {
     setCurrentIndex((prev) => Math.max(0, prev - 1))
@@ -112,23 +143,26 @@ const ProjectsTestimonial = ({
         {subtitle && <p className="projects-testimonial-subtitle">{subtitle}</p>}
       </div>
 
-      <div className="projects-testimonial-wrapper relative">
-        <button
-          className="projects-testimonial-nav-btn projects-testimonial-nav-prev"
-          onClick={handlePrev}
-          disabled={currentIndex === 0}
-          aria-label="Previous videos"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+      <div className={`projects-testimonial-wrapper relative ${!isScrollable ? 'projects-testimonial-wrapper--no-nav' : ''}`}>
+        {isScrollable && (
+          <button
+            className="projects-testimonial-nav-btn projects-testimonial-nav-prev"
+            onClick={handlePrev}
+            disabled={currentIndex === 0}
+            aria-label="Previous videos"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
 
         <div className="projects-testimonial-container">
           <div 
-            className="projects-testimonial-grid"
+            ref={gridRef}
+            className={`projects-testimonial-grid ${!isScrollable ? 'projects-testimonial-grid--centered' : ''}`}
             style={{
-              transform: `translateX(-${currentIndex * (100 / cardsPerView)}%)`,
+              transform: isScrollable ? `translateX(-${translateOffset}px)` : 'translateX(0)',
               transition: 'transform 0.4s var(--ease)',
               '--cards-per-view': cardsPerView
             }}
@@ -152,6 +186,13 @@ const ProjectsTestimonial = ({
                         alt={`Testimonial video ${index + 1}`}
                         className="projects-testimonial-thumbnail"
                         loading="lazy"
+                        onError={(e) => {
+                          const img = e.currentTarget
+                          if (!img.dataset.fallbackApplied) {
+                            img.dataset.fallbackApplied = 'true'
+                            img.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+                          }
+                        }}
                       />
                     ) : (
                       <div className="projects-testimonial-placeholder">
@@ -182,16 +223,18 @@ const ProjectsTestimonial = ({
           </div>
         </div>
 
-        <button
-          className="projects-testimonial-nav-btn projects-testimonial-nav-next"
-          onClick={handleNext}
-          disabled={currentIndex >= maxIndex}
-          aria-label="Next videos"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        {isScrollable && (
+          <button
+            className="projects-testimonial-nav-btn projects-testimonial-nav-next"
+            onClick={handleNext}
+            disabled={currentIndex >= maxIndex}
+            aria-label="Next videos"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Video Modal */}
